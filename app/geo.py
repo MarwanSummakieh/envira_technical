@@ -40,6 +40,8 @@ def select_stations(
     """Select geometry valid on the final date, with inclusive validity bounds.
 
     Invalid rows are rejected and normalized duplicate versions are collapsed.
+    Conflict detection considers only valid rows; a rejected row does not poison
+    otherwise valid history for the same ID. Rejection counts must be reviewed.
     An ID with overlapping versions at different coordinates is excluded entirely:
     the source provides no authority with which to resolve the disagreement.
     """

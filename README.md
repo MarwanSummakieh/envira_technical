@@ -1,6 +1,6 @@
 # Envira exposure service
 
-Stage 3: working single-asset rainfall exposure endpoint with startup preparation and focused fixture tests.
+Single-asset rainfall exposure endpoint with startup preparation and verified fixture tests.
 The supplied candidate brief is authoritative and is kept locally, excluded from publication.
 
 ## Setup (PowerShell, Python 3.12)
@@ -144,13 +144,37 @@ Station geometry uses the period's final date even for earlier rainfall; any con
 location history excludes that ID entirely. Invalid/off-schedule observation rows are rejected and
 counted; valid scheduled slots are required for completeness. A valid timezone-aware timestamp
 contributes to the global period even if its rainfall or station reference is invalid.
+Invalid station rows are rejected before version-conflict checks; they do not disqualify other valid
+rows for that ID. Consequently, malformed records could hide a contradictory history. Review startup
+quality counts before interpreting results. Temperature is unused and does not affect rainfall validity.
 
-Stage 3 includes basic calculation/API tests and a real-data response. The expanded edge-case suite
-and an independent real-data cross-check are reserved for Stage 4.
+## Verification and limitations
 
-Stage 2 verification: four tests passed and the documented Uvicorn command returned the health
-response using the supplied data. Starlette emits two dependency deprecation warnings (httpx and
-AnyIO's BlockingPortal alias); neither failed the checks. A clean-environment install is not yet verified.
+Stage 4: 94 tests passed, covering DST, exact thresholds, missing dates, duplicate/conflict policies,
+station histories, API errors, finite JSON numbers and absence of request-time CSV reads.
+An independent calculation using standard-library CSV parsing, datetime and Decimal matched the
+example's station, distance, period, wet days, maximum and coverage. Run it from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.verify_example data
+```
+
+The largest valid window is 2026-01-13 through 2026-01-15: **1.2 + 2.9 + 68.4 = 72.5 mm**.
+The projection check includes UTM32's known 500,000 m central-meridian easting at longitude 9°;
+this validates coordinate ordering and projection mechanics, not the unconfirmed source datum.
+
+One Windows in-process TestClient run measured 10.359 seconds for startup and 100 requests at
+1.343 ms median / 4.841 ms maximum, with CSV reads blocked after startup. These are local measured
+observations, not a network/load benchmark. All verification so far was agent-run.
+Starlette emits two dependency deprecation warnings (httpx and AnyIO's BlockingPortal alias);
+neither failed checks. A clean-environment install is not yet verified.
+
+Rainfall values are interpreted as amounts assigned to the timestamp's date, with source interval
+semantics unconfirmed. Missing rainfall remains unknown; station selection does not optimize for
+weather completeness. Projected straight-line distance and final-date geometry simplify history.
+Finite values whose sums exceed JSON float range fail preparation clearly instead of emitting Infinity.
+Candidate data is required separately; it is not included in the repository.
+
 If a restricted runner cannot access its usual temporary folder, run tests with a local temporary root:
 
 ```powershell

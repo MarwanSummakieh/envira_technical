@@ -164,5 +164,8 @@ def prepare_data(source: SourceTables) -> PreparedData:
         for asset_id, (x, y) in coordinates.items():
             station, distance = nearest_station(x, y, stations)
             assignments[asset_id] = (station.station_id, distance)
-    logger.info("Prepared data quality counts: %s", quality)
+    # Uvicorn does not configure the root logger at INFO by default. Surface
+    # actual quality issues at WARNING so normal launches disclose rejections.
+    log = logger.warning if any(value for key, value in quality.items() if key != "station_selected_count") else logger.info
+    log("Prepared data quality counts: %s", quality)
     return PreparedData(asset_ids, conflicting_assets, invalid_assets, assignments, summaries, start, end, quality)

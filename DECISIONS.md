@@ -5,7 +5,7 @@ Stopped: in progress
 - Stages 1–3: runnable single-asset exposure API, startup validation, projected station assignment and exact rainfall totals.
 - Exercise deadline: 12:22 local; reserve 12:07 onward for final verification. Review pauses count.
 - AI tooling: Codex desktop agent and a verification subagent used for inspection, setup, checks and documentation.
-- Agent verification: basic metric/API tests and real candidate response passed; edge checks pending; no user-confirmed checks.
+- Agent verification: 94 tests passed; independent CSV check confirmed 1.2 + 2.9 + 68.4 = 72.5 mm; no user-confirmed checks.
 - Verified UTC schedule yields four slots on DST dates; rejected coordinate magnitudes as proof of CRS.
 
 ## What I deliberately did not build, and why
