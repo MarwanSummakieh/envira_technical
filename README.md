@@ -79,6 +79,7 @@ preserves the original local commit containing that brief; do not publish that b
 `app/main.py`: FastAPI app factory, lifespan preparation, response models and routes.
 `app/data.py`: validation and prepared lookups. `app/geo.py`: CRS and nearest station with ID tie-breaks.
 `app/exposure.py`: local daily aggregation and precomputed per-station summaries.
+`app/cli.py`: command-line JSON output using the same preparation and response contract.
 `tests/`: tiny hand-calculated fixtures and API checks.
 
 Unknown assets return 404; conflicting asset IDs return 409; invalid asset records return 422.
@@ -86,6 +87,7 @@ No eligible station location produces 503. Insufficient weather data returns 200
 and explicit availability statuses. Unusable files/schema or no valid source timestamps fail startup.
 Prepared in-memory data is static until restart, per process; requests do not reload CSVs.
 No database, shared cache, frontend or risk score is implemented.
+
 ## Run and test
 
 From the repository root, with candidate files in `data/`:
@@ -101,6 +103,17 @@ In a second terminal:
 Invoke-RestMethod http://127.0.0.1:8000/health
 .\.venv\Scripts\python.exe -m pytest -q
 ```
+
+The optional CLI produces the same exposure JSON without running a server:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.cli A-200975 --data-dir data
+```
+
+It uses `ENVIRA_DATA_DIR` or `data` when `--data-dir` is omitted, exits 0 on success and 2 on
+input/data errors, and writes diagnostics to stderr. Each CLI invocation prepares the data once;
+use the running API for repeated queries. Docker was available as a command, but its daemon
+was not running, so the locally verifiable CLI was chosen as the only optional feature.
 
 For a JetBrains Python run configuration, register the existing `.venv\Scripts\python.exe`
 as the project Python SDK, choose module `uvicorn`, and use parameters
