@@ -67,7 +67,7 @@ preserves the original local commit containing that brief; do not publish that b
   Three station IDs have adjacent date ranges: DK1665 (July 24/25, 2025), DK1595
   (November 3/4, 2025), DK1560 (January 21/22, 2026). Use inclusive boundaries and reject
   conflicting overlaps; select geometry valid on the final analysis date and use that ID's entire history.
-- Collapse identical duplicates; conflicting assets will return HTTP 409. Conflicting rainfall keys
+- Collapse identical duplicates; conflicting assets return HTTP 409. Conflicting rainfall keys
   become unknown, regardless of row order; differences only in temperature do not matter.
 - Treat each precipitation amount as belonging to the timestamp's local date, summing without
   duration multiplication. Interval start/end semantics remain unconfirmed by the candidate brief.
@@ -170,7 +170,7 @@ quality counts before interpreting results. Temperature is unused and does not a
 
 ## Verification and limitations
 
-The expanded suite covers DST, exact thresholds, missing dates, duplicate/conflict policies,
+All **102 tests passed**, covering DST, exact thresholds, missing dates, duplicate/conflict policies,
 station histories, API errors, finite JSON numbers and absence of request-time CSV reads.
 An independent calculation using standard-library CSV parsing, datetime and Decimal matched the
 example's station, distance, period, wet days, maximum and coverage. Run it from the repository root:
@@ -187,11 +187,17 @@ One Windows in-process TestClient run measured 10.359 seconds for startup and 10
 1.343 ms median / 4.841 ms maximum, with CSV reads blocked after startup. These are local measured
 observations, not a network/load benchmark. All verification so far was agent-run.
 Starlette emits two dependency deprecation warnings (httpx and AnyIO's BlockingPortal alias);
-neither failed checks. A clean-environment install is not yet verified.
+neither failed checks. Final reproduction used a fresh Python 3.12 virtual environment, installed
+`requirements.lock`, and ran the full suite from a separate tracked-source export with the final
+timestamp fix applied. `pip check`, the real-data CLI and HTTP smoke checks passed. A wheel was
+built and installed into that environment; isolated imports confirmed both the packaged frontend
+and exposure API work outside the source import path. Other operating systems were not tested.
 
 Browser verification passed for a real lookup, keyboard submission, unknown/conflicting assets,
 network failure and recovery. The 390 px viewport has no horizontal overflow; an axe accessibility
 scan reported zero violations. No JavaScript page errors were recorded.
+Final review also found and fixed rejection of valid `+0000` timezone offsets; regression tests
+cover both colonized and basic offsets while naive timestamps remain invalid.
 
 Rainfall values are interpreted as amounts assigned to the timestamp's date, with source interval
 semantics unconfirmed. Missing rainfall remains unknown; station selection does not optimize for
@@ -207,3 +213,13 @@ New-Item -ItemType Directory -Path $env:TMP -Force
 $env:TEMP = $env:TMP
 .\.venv\Scripts\python.exe -m pytest -q
 ```
+
+## Walkthrough and practice
+
+1. Run the server, open `/`, and look up `A-200975`; explain the 55 incomplete days.
+2. Trace one request through `app/main.py` to the prepared assignment and station summary.
+3. Show a tiny fixture test and the independent 13–15 January 2026 calculation.
+4. Explain the CRS assumption, final-date station geometry and duplicate-conflict policy.
+
+Three small follow-up exercises, deliberately not implemented: make the wet-day threshold
+configurable; expose the worst window's start/end dates; add an optional eligible-station filter.

@@ -132,7 +132,8 @@ def prepare_data(source: SourceTables) -> PreparedData:
     observations = observations.drop_duplicates()
     observations["station_id"] = observations.station_id.str.strip()
     # Reject naive timestamps instead of silently interpreting them as UTC.
-    aware = observations.observed_at.str.contains(r"(?:Z|[+-]\d{2}:\d{2})$", regex=True)
+    observations["observed_at"] = observations.observed_at.str.strip()
+    aware = observations.observed_at.str.contains(r"(?:Z|[+-]\d{2}:?\d{2})$", regex=True)
     timestamps = pd.to_datetime(observations.observed_at.where(aware), utc=True, format="ISO8601", errors="coerce")
     quality["invalid_timestamp_rows"] = int(timestamps.isna().sum())
     if timestamps.notna().sum() == 0:

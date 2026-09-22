@@ -38,6 +38,15 @@ def write_source(source: SourceTables, directory: Path) -> Path:
     return directory
 
 
+@pytest.mark.parametrize("suffix", ["+0000", "+00:00"])
+def test_iso_timezone_offsets_with_or_without_colon(source: SourceTables, suffix: str):
+    source.observations["observed_at"] = source.observations.observed_at.str.replace("Z", suffix) + " "
+    prepared = prepare_data(source)
+    assert prepared.quality["invalid_timestamp_rows"] == 0
+    assert prepared.start == prepared.end == date(2025, 1, 1)
+    assert prepared.exposure("A1")["wet_day_count"] == 1
+
+
 def test_identical_asset_rows_collapse_without_conflict(source: SourceTables):
     source.assets.loc[1] = source.assets.loc[0]
     prepared = prepare_data(source)
