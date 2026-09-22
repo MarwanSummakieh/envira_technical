@@ -1,148 +1,86 @@
 # Envira exposure service
 
-Single-asset rainfall exposure API, browser lookup and CLI with startup preparation and verified fixture tests.
-The supplied candidate brief is authoritative and is kept locally, excluded from publication.
+Look up an asset's nearest weather station, wet-day count and highest three-day rainfall through a web page, API or CLI.
 
-## Setup (PowerShell, Python 3.12)
+## Quick start
 
-Use one workflow: standard `venv` and `pip`. Install Python 3.12 if `py -3.12` is unavailable.
-The development machine used the Codex bundled Python 3.12.14 executable to create the environment;
-no global packages were installed. Activation is optional:
+Use **Python 3.12** and PowerShell from the repository root. If `.venv` already exists, skip the first command. If `py` is unavailable, install Python 3.12 first.
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.lock
-.\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\python.exe -m pytest --version
 ```
 
-`pyproject.toml` declares supported Python and direct dependency ranges; `requirements.lock`
-pins the resolved runtime and test dependencies from the Windows Python 3.12 environment.
-It is a pip freeze snapshot, without hashes or a cross-platform solver guarantee.
-To intentionally refresh it, install `.[test]`, then freeze excluding the local project.
+Extract the supplied candidate data archive. Place its three CSVs directly in `data/`:
 
-## Candidate data
-
-Obtain only the supplied candidate `envira-test-data.zip`, extract it locally, and place
-`assets.csv`, `stations.csv`, and `observations.csv` directly under `data/`.
-For the already-extracted layout on this machine:
-
-```powershell
-New-Item -ItemType Directory -Path data -Force
-Copy-Item envira-test-data\data\assets.csv,envira-test-data\data\stations.csv,envira-test-data\data\observations.csv -Destination data
-.\.venv\Scripts\python.exe scripts\profile_data.py data
+```text
+data/
+  assets.csv
+  stations.csv
+  observations.csv
 ```
 
-Data, archives, environments and IDE files are ignored by Git.
-Original supplied files are preserved. Do not package this entire working directory;
-use tracked files for submission and arrange authorized candidate data separately.
-The candidate brief is also excluded from published history. The `stage1-local-original` branch
-preserves the original local commit containing that brief; do not publish that branch or use `git push --all`.
+Data is supplied separately. To use another folder, set `$env:ENVIRA_DATA_DIR = 'C:\path\to\data'`.
 
-## Inspected data and assumptions
-
-| Input | Rows | Unique keys | Exact duplicate extras | Keys with differing rows |
-| --- | ---: | ---: | ---: | ---: |
-| Assets (`asset_id`) | 5,040 | 5,000 | 0 | 40 |
-| Stations (`station_id`) | 123 | 120 | 0 | 3 historical versions |
-| Observations (`station_id`, `observed_at`) | 260,753 | 260,553 | 0 | 200 precipitation conflicts |
-
-- Asset x: 471,540.51–729,590.93; y: 6,078,766.71–6,384,374.90. Station latitude:
-  54.922192–57.579624; longitude: 8.633835–12.637938. No missing/nonfinite coordinate values.
-- Working CRS assumption: assets ETRS89 / UTM zone 32N (EPSG:25832), stations WGS84
-  (EPSG:4326). Transform with explicit longitude/latitude order (`always_xy=True`) into
-  EPSG:25832 and use projected straight-line metres. Assets transformed to approximately
-  8.55–12.65 E, 54.86–57.59 N, consistent with Denmark and station bounds. EPSG:32632 produces
-  essentially the same bounds, so this sanity check cannot establish the datum. Source CRS is unconfirmed.
-- UTC coverage: 2024-12-31 23:00 through 2026-06-30 17:00. Copenhagen local analysis dates:
-  2025-01-01 through 2026-06-30 inclusive (546 days), shared across stations.
-- Observations occur at 23:00, 05:00, 11:00 and 17:00 UTC. Generate expected slots in UTC,
-  convert to Copenhagen, then group by date. This schedule yields four slots even on the
-  three DST transition dates in the data; that is evidence from this schedule, not a 24-hour-day assumption.
-  All rows are on schedule; 1,527 station/timestamp keys are absent from 262,080 expected keys
-  (120 stations times 2,184 slots), before invalid rainfall and conflicts are excluded.
-- Rainfall has 5,285 negative sentinel rows: 4,910 at -999 and 375 at -9999. No blank/nonfinite
-  rainfall, malformed timestamps, or unknown station references were found. Negative temperatures are valid.
-- Station validity dates parse successfully. The 120 blank ends mean open-ended validity.
-  Three station IDs have adjacent date ranges: DK1665 (July 24/25, 2025), DK1595
-  (November 3/4, 2025), DK1560 (January 21/22, 2026). Use inclusive boundaries and reject
-  conflicting overlaps; select geometry valid on the final analysis date and use that ID's entire history.
-- Collapse identical duplicates; conflicting assets return HTTP 409. Conflicting rainfall keys
-  become unknown, regardless of row order; differences only in temperature do not matter.
-- Treat each precipitation amount as belonging to the timestamp's local date, summing without
-  duration multiplication. Interval start/end semantics remain unconfirmed by the candidate brief.
-- Only complete days will contribute to wet-day counts (inclusive 20 mm) and consecutive three-date
-  windows. Missing days remain unknown. Return nullable metrics and explicit coverage/status, never NaN.
-
-## Architecture
-
-`app/main.py`: FastAPI app factory, lifespan preparation, response models and routes.
-`app/data.py`: validation and prepared lookups. `app/geo.py`: CRS and nearest station with ID tie-breaks.
-`app/exposure.py`: local daily aggregation and precomputed per-station summaries.
-`app/cli.py`: command-line JSON output using the same preparation and response contract.
-`app/static/index.html`: a responsive, dependency-free browser form calling the same exposure endpoint.
-`tests/`: tiny hand-calculated fixtures and API checks.
-
-Unknown assets return 404; conflicting asset IDs return 409; invalid asset records return 422.
-No eligible station location produces 503. Insufficient weather data returns 200 with null metrics
-and explicit availability statuses. Unusable files/schema or no valid source timestamps fail startup.
-Prepared in-memory data is static until restart, per process; requests do not reload CSVs.
-No database, shared cache or risk score is implemented.
-
-## Run and test
-
-From the repository root, with candidate files in `data/`:
+Start the server:
 
 ```powershell
-$env:ENVIRA_DATA_DIR = '.\data'
 .\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-Open **http://127.0.0.1:8000/** and select **Check exposure** for the prefilled example asset,
-or enter another asset ID. The page shows station, distance, rainfall metrics, period and missing-data
-coverage. Unknown/conflicting assets and network failures display errors without stale results.
-The form works with keyboard input and narrow screens; no JavaScript build step or external assets
-are needed. Interactive API documentation is also available at `/docs`.
+Open [the app](http://127.0.0.1:8000/) and click **Check exposure**, or enter another asset ID. [API docs](http://127.0.0.1:8000/docs) and [health status](http://127.0.0.1:8000/health) are also available. Stop with **Ctrl+C**.
 
-In a second terminal:
+### WebStorm / JetBrains
+
+Create a Python run configuration with these settings:
+
+| Setting | Value |
+| --- | --- |
+| Python SDK / interpreter | Select the existing `.venv\Scripts\python.exe` |
+| Run type | Module |
+| Module name | `uvicorn` |
+| Parameters | `app.main:create_app --factory --host 127.0.0.1 --port 8000` |
+| Working directory | Repository root, not `app/` |
+| Environment variables | Optional: `ENVIRA_DATA_DIR=C:\path\to\data` |
+
+For “Please select a module with a valid Python SDK,” register that interpreter as the project's Python SDK. Stop any existing server before using port 8000 again.
+
+## Tests and CLI
+
+Neither command needs a running server. Tests use temporary fixtures, not candidate data.
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
 .\.venv\Scripts\python.exe -m pytest -q
-```
-
-The optional CLI produces the same exposure JSON without running a server:
-
-```powershell
 .\.venv\Scripts\python.exe -m app.cli A-200975 --data-dir data
 ```
 
-It uses `ENVIRA_DATA_DIR` or `data` when `--data-dir` is omitted, exits 0 on success and 2 on
-input/data errors, and writes diagnostics to stderr. Each CLI invocation prepares the data once;
-use the running API for repeated queries. Docker was available as a command, but its daemon
-was not running, so the locally verifiable CLI was chosen. The requested frontend uses the same server.
+The CLI returns the same JSON as the API: exit `0` on success, `2` on input/data errors, diagnostics on stderr. Without `--data-dir`, it uses `ENVIRA_DATA_DIR` or `data`.
 
-For a JetBrains Python run configuration, register the existing `.venv\Scripts\python.exe`
-as the project Python SDK, choose module `uvicorn`, and use parameters
-`app.main:create_app --factory --host 127.0.0.1 --port 8000` with the repository root as the
-working directory. The local `Envira` configuration is set up this way. IDE settings are
-machine-local and ignored by Git. After an external SDK-settings repair, restart the IDE
-to load the registration; ensure no other server already occupies port 8000.
+Check the supplied data and independently verify the example:
 
-Health returns `{"status":"ok"}` after startup prepares the three nonempty CSVs, validates rows and
-precomputes station summaries and asset assignments. Individual unavailable/conflicting records
-are disclosed by errors, coverage and concise startup counts. Missing/empty files or bad schemas
-prevent startup. No file reads occur merely by importing `app.main` or creating the app.
-`create_app(data_dir=...)` overrides `ENVIRA_DATA_DIR`; the default is `data` relative to the working
-directory. Tests use temporary CSV fixtures, not candidate files.
+```powershell
+.\.venv\Scripts\python.exe scripts\profile_data.py data
+.\.venv\Scripts\python.exe -m scripts.verify_example data
+```
 
-## Example request and observed response
+If pytest cannot access its temporary folder:
+
+```powershell
+$env:TMP = Join-Path (Get-Location) '.test-tmp'
+New-Item -ItemType Directory -Path $env:TMP -Force
+$env:TEMP = $env:TMP
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+## API example
+
+With the server running:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/assets/A-200975/exposure | ConvertTo-Json -Depth 5
 ```
 
-Observed against the supplied candidate CSVs:
+Observed response with the supplied CSVs:
 
 ```json
 {
@@ -158,68 +96,47 @@ Observed against the supplied candidate CSVs:
 }
 ```
 
-Counts and maxima cover only complete days/windows; they are not estimates for missing rainfall.
-No wet-day count is reported when no complete day exists; a complete dry day legitimately contributes zero.
-Station geometry uses the period's final date even for earlier rainfall; any conflicting overlapping
-location history excludes that ID entirely. Invalid/off-schedule observation rows are rejected and
-counted; valid scheduled slots are required for completeness. A valid timezone-aware timestamp
-contributes to the global period even if its rainfall or station reference is invalid.
-Invalid station rows are rejected before version-conflict checks; they do not disqualify other valid
-rows for that ID. Consequently, malformed records could hide a contradictory history. Review startup
-quality counts before interpreting results. Temperature is unused and does not affect rainfall validity.
+| Condition | HTTP response |
+| --- | --- |
+| Unknown asset | `404` |
+| Conflicting asset records | `409` |
+| Invalid asset record | `422` |
+| No eligible station | `503` |
+| Insufficient weather data | `200`, affected metrics are `null` with availability statuses |
 
-## Verification and limitations
+Missing/empty CSVs, invalid schemas or no valid timestamps prevent startup. Review startup quality counts before interpreting results.
 
-All **102 tests passed**, covering DST, exact thresholds, missing dates, duplicate/conflict policies,
-station histories, API errors, finite JSON numbers and absence of request-time CSV reads.
-An independent calculation using standard-library CSV parsing, datetime and Decimal matched the
-example's station, distance, period, wet days, maximum and coverage. Run it from the repository root:
+## Calculation rules
 
-```powershell
-.\.venv\Scripts\python.exe -m scripts.verify_example data
-```
+- **Distance:** assume assets use EPSG:25832 and stations use WGS84 (EPSG:4326). Transform longitude/latitude to EPSG:25832; choose the shortest projected distance in metres, breaking ties by station ID. Source CRS remains unconfirmed.
+- **Station history:** use geometry valid on the final analysis date and that station ID's full rainfall history. Validity boundaries are inclusive; blank ends are open. Conflicting overlapping locations exclude the ID. Invalid station rows are discarded first, so malformed records can hide contradictory history.
+- **Dates:** use Europe/Copenhagen local dates and expected observations at 23:00, 05:00, 11:00 and 17:00 UTC. Generate slots across timezone changes; do not assume every local day lasts 24 hours.
+- **Missing data:** identical readings count once. Missing, negative, invalid or conflicting rainfall is unknown; temperature is unused. A day is complete only when every expected slot is valid.
+- **Metrics:** use exact decimal sums. Wet days have at least **20 mm**. Three-day windows require three consecutive complete local dates. `null` means unavailable; `0` means an observed zero result. Coverage shows excluded days/windows.
+- **Period:** all valid source timestamps define the shared date range, even when their rainfall or station reference is rejected. A stray timestamp can extend it. Rainfall amounts belong to the timestamp's local date; interval start/end semantics remain unconfirmed.
 
-The largest valid window is 2026-01-13 through 2026-01-15: **1.2 + 2.9 + 68.4 = 72.5 mm**.
-The projection check includes UTM32's known 500,000 m central-meridian easting at longitude 9°;
-this validates coordinate ordering and projection mechanics, not the unconfirmed source datum.
+These metrics describe observed rainfall, not flood probability or estimates for missing periods.
 
-One Windows in-process TestClient run measured 10.359 seconds for startup and 100 requests at
-1.343 ms median / 4.841 ms maximum, with CSV reads blocked after startup. These are local measured
-observations, not a network/load benchmark. All verification so far was agent-run.
-Starlette emits two dependency deprecation warnings (httpx and AnyIO's BlockingPortal alias);
-neither failed checks. Final reproduction used a fresh Python 3.12 virtual environment, installed
-`requirements.lock`, and ran the full suite from a separate tracked-source export with the final
-timestamp fix applied. `pip check`, the real-data CLI and HTTP smoke checks passed. A wheel was
-built and installed into that environment; isolated imports confirmed both the packaged frontend
-and exposure API work outside the source import path. Other operating systems were not tested.
+## Where to change code
 
-Browser verification passed for a real lookup, keyboard submission, unknown/conflicting assets,
-network failure and recovery. The 390 px viewport has no horizontal overflow; an axe accessibility
-scan reported zero violations. No JavaScript page errors were recorded.
-Final review also found and fixed rejection of valid `+0000` timezone offsets; regression tests
-cover both colonized and basic offsets while naive timestamps remain invalid.
+| File | Responsibility |
+| --- | --- |
+| [app/main.py](app/main.py) | Routes, response schema and startup |
+| [app/data.py](app/data.py) | CSV validation and prepared lookups |
+| [app/geo.py](app/geo.py) | Coordinates, station history and nearest station |
+| [app/exposure.py](app/exposure.py) | Daily totals and rainfall metrics |
+| [app/cli.py](app/cli.py) | Command-line interface |
+| [app/static/index.html](app/static/index.html) | Browser form; no frontend build step |
+| [tests/](tests/) | Small fixtures and API checks |
 
-Rainfall values are interpreted as amounts assigned to the timestamp's date, with source interval
-semantics unconfirmed. Missing rainfall remains unknown; station selection does not optimize for
-weather completeness. Projected straight-line distance and final-date geometry simplify history.
-Finite values whose sums exceed JSON float range fail preparation clearly instead of emitting Infinity.
-Candidate data is required separately; it is not included in the repository.
+Data is prepared once per server process and stays fixed until restart. Requests do not reread CSVs; each CLI invocation prepares data again. `create_app(data_dir=...)` overrides the environment setting.
 
-If a restricted runner cannot access its usual temporary folder, run tests with a local temporary root:
+To change a calculation, update its module and a small fixture test, then run pytest. Update the response schema and browser form when adding output fields.
 
-```powershell
-$env:TMP = Join-Path (Get-Location) '.test-tmp'
-New-Item -ItemType Directory -Path $env:TMP -Force
-$env:TEMP = $env:TMP
-.\.venv\Scripts\python.exe -m pytest -q
-```
+## Verification and limits
 
-## Walkthrough and practice
+The original implementation passed **102 tests**, fresh Windows Python 3.12 installation, installed-wheel/API/CLI checks and desktop/mobile browser checks. Accessibility scanning found zero violations. Two dependency deprecation warnings remain; other operating systems were not tested. `requirements.lock` is a pinned Windows dependency snapshot.
 
-1. Run the server, open `/`, and look up `A-200975`; explain the 55 incomplete days.
-2. Trace one request through `app/main.py` to the prepared assignment and station summary.
-3. Show a tiny fixture test and the independent 13–15 January 2026 calculation.
-4. Explain the CRS assumption, final-date station geometry and duplicate-conflict policy.
+The independent example check matched **1.2 + 2.9 + 68.4 = 72.5 mm** for 13–15 January 2026. All checks were agent-run. See [DECISIONS.md](DECISIONS.md) for scope and next steps.
 
-Three small follow-up exercises, deliberately not implemented: make the wet-day threshold
-configurable; expose the worst window's start/end dates; add an optional eligible-station filter.
+Keep candidate data, briefs, environments and IDE settings out of publication. They are ignored locally. The local `stage1-local-original` branch contains the original brief; do not publish it or use `git push --all`.
