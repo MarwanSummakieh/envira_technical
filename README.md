@@ -1,7 +1,7 @@
 # Envira exposure service
 
-Stage 1 complete: candidate-data profile and Python setup only. There is no HTTP service yet.
-The authoritative requirements are in [CANDIDATE-BRIEF.md](CANDIDATE-BRIEF.md).
+Stage 2: runnable health endpoint and startup CSV/schema loading. Exposure calculations are not implemented yet.
+The supplied candidate brief is authoritative and is kept locally, excluded from publication.
 
 ## Setup (PowerShell, Python 3.12)
 
@@ -36,6 +36,8 @@ Copy-Item envira-test-data\data\assets.csv,envira-test-data\data\stations.csv,en
 Data, archives, environments and IDE files are ignored by Git.
 Original supplied files are preserved. Do not package this entire working directory;
 use tracked files for submission and arrange authorized candidate data separately.
+The candidate brief is also excluded from published history. The `stage1-local-original` branch
+preserves the original local commit containing that brief; do not publish that branch or use `git push --all`.
 
 ## Inspected data and assumptions
 
@@ -82,5 +84,41 @@ use tracked files for submission and arrange authorized candidate data separatel
 Unknown assets will return 404; insufficient data will produce a documented unavailable result.
 Unusable files/schema will fail startup clearly. Prepared in-memory data is static until restart,
 per process, and requests will not reload CSVs. No database, shared cache, frontend or risk score is planned.
-Service run and example request commands will be added when Stage 2/3 makes them executable.
-No application tests exist yet; Stage 1 verifies imports and pytest availability only.
+## Run and test
+
+From the repository root, with candidate files in `data/`:
+
+```powershell
+$env:ENVIRA_DATA_DIR = '.\data'
+.\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+In a second terminal:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Health returns `{"status":"ok"}` after startup loads the three nonempty CSVs and validates required
+columns. It does not yet certify row quality or exposure availability. Missing/empty files or bad
+schemas prevent startup. No file reads occur merely by importing `app.main` or creating the app.
+`create_app(data_dir=...)` overrides `ENVIRA_DATA_DIR`; the default is `data` relative to the working
+directory. Tests use temporary CSV fixtures, not candidate files.
+
+`ExposureResponse` in `app/main.py` defines the upcoming response: asset/station IDs, distance,
+nullable wet-day count and three-day precipitation, separate availability statuses, inclusive
+analysis dates, timezone and complete/incomplete day/window counts. No exposure route is registered
+yet: `/assets/{asset_id}/exposure` currently returns 404 rather than invented data.
+
+Stage 2 verification: four tests passed and the documented Uvicorn command returned the health
+response using the supplied data. Starlette emits two dependency deprecation warnings (httpx and
+AnyIO's BlockingPortal alias); neither failed the checks. A clean-environment install is not yet verified.
+If a restricted runner cannot access its usual temporary folder, run tests with a local temporary root:
+
+```powershell
+$env:TMP = Join-Path (Get-Location) '.test-tmp'
+New-Item -ItemType Directory -Path $env:TMP -Force
+$env:TEMP = $env:TMP
+.\.venv\Scripts\python.exe -m pytest -q
+```
