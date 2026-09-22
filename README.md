@@ -1,6 +1,6 @@
 # Envira exposure service
 
-Stage 2: runnable health endpoint and startup CSV/schema loading. Exposure calculations are not implemented yet.
+Stage 3: working single-asset rainfall exposure endpoint with startup preparation and focused fixture tests.
 The supplied candidate brief is authoritative and is kept locally, excluded from publication.
 
 ## Setup (PowerShell, Python 3.12)
@@ -74,16 +74,18 @@ preserves the original local commit containing that brief; do not publish that b
 - Only complete days will contribute to wet-day counts (inclusive 20 mm) and consecutive three-date
   windows. Missing days remain unknown. Return nullable metrics and explicit coverage/status, never NaN.
 
-## Smallest planned implementation
+## Architecture
 
 `app/main.py`: FastAPI app factory, lifespan preparation, response models and routes.
 `app/data.py`: validation and prepared lookups. `app/geo.py`: CRS and nearest station with ID tie-breaks.
 `app/exposure.py`: local daily aggregation and precomputed per-station summaries.
 `tests/`: tiny hand-calculated fixtures and API checks.
 
-Unknown assets will return 404; insufficient data will produce a documented unavailable result.
-Unusable files/schema will fail startup clearly. Prepared in-memory data is static until restart,
-per process, and requests will not reload CSVs. No database, shared cache, frontend or risk score is planned.
+Unknown assets return 404; conflicting asset IDs return 409; invalid asset records return 422.
+No eligible station location produces 503. Insufficient weather data returns 200 with null metrics
+and explicit availability statuses. Unusable files/schema or no valid source timestamps fail startup.
+Prepared in-memory data is static until restart, per process; requests do not reload CSVs.
+No database, shared cache, frontend or risk score is implemented.
 ## Run and test
 
 From the repository root, with candidate files in `data/`:
@@ -107,16 +109,44 @@ working directory. The local `Envira` configuration is set up this way. IDE sett
 machine-local and ignored by Git. After an external SDK-settings repair, restart the IDE
 to load the registration; ensure no other server already occupies port 8000.
 
-Health returns `{"status":"ok"}` after startup loads the three nonempty CSVs and validates required
-columns. It does not yet certify row quality or exposure availability. Missing/empty files or bad
-schemas prevent startup. No file reads occur merely by importing `app.main` or creating the app.
+Health returns `{"status":"ok"}` after startup prepares the three nonempty CSVs, validates rows and
+precomputes station summaries and asset assignments. Individual unavailable/conflicting records
+are disclosed by errors, coverage and concise startup counts. Missing/empty files or bad schemas
+prevent startup. No file reads occur merely by importing `app.main` or creating the app.
 `create_app(data_dir=...)` overrides `ENVIRA_DATA_DIR`; the default is `data` relative to the working
 directory. Tests use temporary CSV fixtures, not candidate files.
 
-`ExposureResponse` in `app/main.py` defines the upcoming response: asset/station IDs, distance,
-nullable wet-day count and three-day precipitation, separate availability statuses, inclusive
-analysis dates, timezone and complete/incomplete day/window counts. No exposure route is registered
-yet: `/assets/{asset_id}/exposure` currently returns 404 rather than invented data.
+## Example request and observed response
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/assets/A-200975/exposure | ConvertTo-Json -Depth 5
+```
+
+Observed against the supplied candidate CSVs:
+
+```json
+{
+  "asset_id": "A-200975",
+  "station_id": "DK1469",
+  "distance_m": 10470.51,
+  "wet_day_count": 25,
+  "worst_three_day_precip_mm": 72.5,
+  "wet_day_status": "available",
+  "three_day_status": "available",
+  "analysis_period": {"start": "2025-01-01", "end": "2026-06-30", "timezone": "Europe/Copenhagen"},
+  "coverage": {"complete_days": 491, "incomplete_days": 55, "eligible_three_day_windows": 398}
+}
+```
+
+Counts and maxima cover only complete days/windows; they are not estimates for missing rainfall.
+No wet-day count is reported when no complete day exists; a complete dry day legitimately contributes zero.
+Station geometry uses the period's final date even for earlier rainfall; any conflicting overlapping
+location history excludes that ID entirely. Invalid/off-schedule observation rows are rejected and
+counted; valid scheduled slots are required for completeness. A valid timezone-aware timestamp
+contributes to the global period even if its rainfall or station reference is invalid.
+
+Stage 3 includes basic calculation/API tests and a real-data response. The expanded edge-case suite
+and an independent real-data cross-check are reserved for Stage 4.
 
 Stage 2 verification: four tests passed and the documented Uvicorn command returned the health
 response using the supplied data. Starlette emits two dependency deprecation warnings (httpx and

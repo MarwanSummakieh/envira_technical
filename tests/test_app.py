@@ -21,14 +21,14 @@ def data_dir(tmp_path: Path) -> Path:
 def test_health_with_isolated_inputs(data_dir: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ENVIRA_DATA_DIR", str(data_dir / "not-used"))
     app = create_app(data_dir)
-    assert not hasattr(app.state, "source_tables")
+    assert not hasattr(app.state, "prepared")
     with TestClient(app) as client:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
-        assert app.state.source_tables.assets.iloc[0].asset_id == "A1"
-        assert client.get("/assets/A1/exposure").status_code == 404
-    assert not hasattr(app.state, "source_tables")
+        assert "A1" in app.state.prepared.asset_ids
+        assert client.get("/assets/UNKNOWN/exposure").status_code == 404
+    assert not hasattr(app.state, "prepared")
 
 
 def test_environment_data_directory(data_dir: Path, monkeypatch: pytest.MonkeyPatch):
@@ -49,3 +49,27 @@ def test_bad_schema_fails_at_startup(data_dir: Path):
     with pytest.raises(ValueError, match="missing required columns.*observed_at"):
         with TestClient(create_app(data_dir)):
             pass
+
+
+def test_exposure_uses_fixture_rainfall(data_dir: Path):
+    # Three local dates: 20, 10 and 30 mm; exactly two wet days and one 60 mm window.
+    rows = ["station_id,observed_at,precip_mm,temp_c"]
+    dates_and_amounts = [
+        ("2024-12-31T23:00:00Z", "5"), ("2025-01-01T05:00:00Z", "5"),
+        ("2025-01-01T11:00:00Z", "5"), ("2025-01-01T17:00:00Z", "5"),
+        ("2025-01-01T23:00:00Z", "2.5"), ("2025-01-02T05:00:00Z", "2.5"),
+        ("2025-01-02T11:00:00Z", "2.5"), ("2025-01-02T17:00:00Z", "2.5"),
+        ("2025-01-02T23:00:00Z", "7.5"), ("2025-01-03T05:00:00Z", "7.5"),
+        ("2025-01-03T11:00:00Z", "7.5"), ("2025-01-03T17:00:00Z", "7.5"),
+    ]
+    rows.extend(f"S1,{stamp},{amount},0" for stamp, amount in dates_and_amounts)
+    (data_dir / "observations.csv").write_text("\n".join(rows), encoding="utf-8")
+    with TestClient(create_app(data_dir)) as client:
+        response = client.get("/assets/A1/exposure")
+    assert response.status_code == 200
+    result = response.json()
+    assert result["station_id"] == "S1"
+    assert result["distance_m"] > 0
+    assert result["wet_day_count"] == 2
+    assert result["worst_three_day_precip_mm"] == 60
+    assert result["coverage"] == {"complete_days": 3, "incomplete_days": 0, "eligible_three_day_windows": 1}

@@ -1,4 +1,4 @@
-"""Application lifecycle, HTTP routes, and the planned exposure contract."""
+"""Application lifecycle, HTTP routes and exposure response contract."""
 from contextlib import asynccontextmanager
 from datetime import date
 import logging
@@ -6,10 +6,13 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.data import load_source_tables
+from app.data import (
+    ConflictingAssetError, InvalidAssetError, NoEligibleStationError,
+    load_source_tables, prepare_data,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -28,7 +31,7 @@ class Coverage(BaseModel):
 
 
 class ExposureResponse(BaseModel):
-    """Contract only in Stage 2; no exposure route returns placeholder results."""
+    """Rainfall metrics describe complete observed days, not flood-loss probability."""
 
     model_config = ConfigDict(allow_inf_nan=False)
     asset_id: str
@@ -48,17 +51,30 @@ def create_app(data_dir: str | Path | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        application.state.source_tables = load_source_tables(directory)
-        logger.info("Candidate CSVs loaded; schema checks passed (row cleaning pending)")
+        application.state.prepared = prepare_data(load_source_tables(directory))
+        logger.info("Candidate CSVs prepared for exposure requests")
         try:
             yield
         finally:
-            del application.state.source_tables
+            del application.state.prepared
 
     application = FastAPI(title="Envira exposure service", lifespan=lifespan)
 
     @application.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @application.get("/assets/{asset_id}/exposure", response_model=ExposureResponse)
+    def exposure(asset_id: str) -> dict:
+        try:
+            return application.state.prepared.exposure(asset_id)
+        except KeyError as exc:
+            raise HTTPException(404, "Unknown asset") from exc
+        except ConflictingAssetError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except InvalidAssetError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except NoEligibleStationError as exc:
+            raise HTTPException(503, str(exc)) from exc
 
     return application
