@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.data import (
@@ -59,6 +60,10 @@ def create_app(data_dir: str | Path | None = None) -> FastAPI:
             del application.state.prepared
 
     application = FastAPI(title="Envira exposure service", lifespan=lifespan)
+
+    @application.get("/", include_in_schema=False)
+    def frontend() -> FileResponse:
+        return FileResponse(Path(__file__).parent / "static" / "index.html")
 
     @application.get("/health")
     def health() -> dict[str, str]:

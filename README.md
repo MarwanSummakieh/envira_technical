@@ -1,6 +1,6 @@
 # Envira exposure service
 
-Single-asset rainfall exposure endpoint with startup preparation and verified fixture tests.
+Single-asset rainfall exposure API, browser lookup and CLI with startup preparation and verified fixture tests.
 The supplied candidate brief is authoritative and is kept locally, excluded from publication.
 
 ## Setup (PowerShell, Python 3.12)
@@ -80,13 +80,14 @@ preserves the original local commit containing that brief; do not publish that b
 `app/data.py`: validation and prepared lookups. `app/geo.py`: CRS and nearest station with ID tie-breaks.
 `app/exposure.py`: local daily aggregation and precomputed per-station summaries.
 `app/cli.py`: command-line JSON output using the same preparation and response contract.
+`app/static/index.html`: a responsive, dependency-free browser form calling the same exposure endpoint.
 `tests/`: tiny hand-calculated fixtures and API checks.
 
 Unknown assets return 404; conflicting asset IDs return 409; invalid asset records return 422.
 No eligible station location produces 503. Insufficient weather data returns 200 with null metrics
 and explicit availability statuses. Unusable files/schema or no valid source timestamps fail startup.
 Prepared in-memory data is static until restart, per process; requests do not reload CSVs.
-No database, shared cache, frontend or risk score is implemented.
+No database, shared cache or risk score is implemented.
 
 ## Run and test
 
@@ -96,6 +97,12 @@ From the repository root, with candidate files in `data/`:
 $env:ENVIRA_DATA_DIR = '.\data'
 .\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
+
+Open **http://127.0.0.1:8000/** and select **Check exposure** for the prefilled example asset,
+or enter another asset ID. The page shows station, distance, rainfall metrics, period and missing-data
+coverage. Unknown/conflicting assets and network failures display errors without stale results.
+The form works with keyboard input and narrow screens; no JavaScript build step or external assets
+are needed. Interactive API documentation is also available at `/docs`.
 
 In a second terminal:
 
@@ -113,7 +120,7 @@ The optional CLI produces the same exposure JSON without running a server:
 It uses `ENVIRA_DATA_DIR` or `data` when `--data-dir` is omitted, exits 0 on success and 2 on
 input/data errors, and writes diagnostics to stderr. Each CLI invocation prepares the data once;
 use the running API for repeated queries. Docker was available as a command, but its daemon
-was not running, so the locally verifiable CLI was chosen as the only optional feature.
+was not running, so the locally verifiable CLI was chosen. The requested frontend uses the same server.
 
 For a JetBrains Python run configuration, register the existing `.venv\Scripts\python.exe`
 as the project Python SDK, choose module `uvicorn`, and use parameters
@@ -163,7 +170,7 @@ quality counts before interpreting results. Temperature is unused and does not a
 
 ## Verification and limitations
 
-Stage 4: 94 tests passed, covering DST, exact thresholds, missing dates, duplicate/conflict policies,
+The expanded suite covers DST, exact thresholds, missing dates, duplicate/conflict policies,
 station histories, API errors, finite JSON numbers and absence of request-time CSV reads.
 An independent calculation using standard-library CSV parsing, datetime and Decimal matched the
 example's station, distance, period, wet days, maximum and coverage. Run it from the repository root:
@@ -181,6 +188,10 @@ One Windows in-process TestClient run measured 10.359 seconds for startup and 10
 observations, not a network/load benchmark. All verification so far was agent-run.
 Starlette emits two dependency deprecation warnings (httpx and AnyIO's BlockingPortal alias);
 neither failed checks. A clean-environment install is not yet verified.
+
+Browser verification passed for a real lookup, keyboard submission, unknown/conflicting assets,
+network failure and recovery. The 390 px viewport has no horizontal overflow; an axe accessibility
+scan reported zero violations. No JavaScript page errors were recorded.
 
 Rainfall values are interpreted as amounts assigned to the timestamp's date, with source interval
 semantics unconfirmed. Missing rainfall remains unknown; station selection does not optimize for

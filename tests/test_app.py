@@ -37,6 +37,14 @@ def test_environment_data_directory(data_dir: Path, monkeypatch: pytest.MonkeyPa
         assert client.get("/health").status_code == 200
 
 
+def test_frontend_is_served_from_the_same_app(data_dir: Path):
+    with TestClient(create_app(data_dir)) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Rainfall exposure" in response.text
+
+
 def test_missing_input_fails_at_startup(tmp_path: Path):
     app = create_app(tmp_path)
     with pytest.raises(ValueError, match="Cannot load required input.*assets.csv"):

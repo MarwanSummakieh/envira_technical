@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" href="data:,">
+  <title>Rainfall exposure · Envira</title>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #23312e;
+      background: #f5f6f3;
+      font-synthesis: none;
+      --muted: #56645f;
+      --line: #d1d8d2;
+      --accent: #286357;
+      --error: #923e30;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    [hidden] { display: none !important; }
+    main { max-width: 960px; margin: 0 auto; padding: 48px 32px 64px; }
+    header { margin-bottom: 40px; }
+    .brand { margin: 0 0 20px; color: var(--accent); font-size: 16px; font-weight: 650; }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 36px); font-weight: 600; letter-spacing: -.025em; }
+    h2 { margin: 0; font-size: 24px; font-weight: 600; overflow-wrap: anywhere; }
+    h3 { margin: 0 0 20px; font-size: 18px; font-weight: 600; }
+    label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+    .lookup-controls { display: flex; gap: 12px; align-items: stretch; max-width: 660px; }
+    input, button { min-height: 48px; border-radius: 6px; font: inherit; }
+    input { flex: 1; min-width: 0; padding: 12px 14px; color: inherit; background: #fff; border: 1px solid #7b8b82; }
+    button { padding: 12px 22px; color: #fff; background: var(--accent); border: 1px solid var(--accent); cursor: pointer; font-weight: 600; white-space: nowrap; }
+    button:hover:not(:disabled) { background: #1c4d42; }
+    button:active:not(:disabled) { background: #163e36; }
+    button:disabled { cursor: wait; opacity: .65; }
+    input:disabled { color: var(--muted); background: #edf0eb; }
+    :focus-visible { outline: 3px solid #417b70; outline-offset: 3px; }
+    input[aria-invalid="true"] { border-color: var(--error); }
+    .lookup-status { min-height: 24px; margin: 12px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .lookup-status[data-tone="error"] { color: var(--error); }
+    .results { margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--line); }
+    .period { margin: 8px 0 24px; color: var(--muted); font-size: 15px; line-height: 1.6; }
+    dl { margin: 0; }
+    dt { color: var(--muted); font-size: 14px; line-height: 1.5; }
+    dd { margin: 6px 0 0; font-size: 17px; font-weight: 550; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .station { display: flex; flex-wrap: wrap; gap: 24px 48px; }
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin: 32px 0; padding: 28px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .metric-value { display: block; margin: 8px 0 0; font-size: 36px; line-height: 1.2; font-weight: 550; letter-spacing: -.025em; }
+    .metric-value.unavailable { font-size: 24px; line-height: 1.8; letter-spacing: normal; }
+    .metric-note { margin: 10px 0 0; color: var(--muted); font-size: 14px; font-weight: 400; line-height: 1.6; }
+    .coverage { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .coverage dd { font-size: 24px; }
+    .limitation { max-width: 740px; margin: 24px 0 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+    @media (max-width: 600px) {
+      main { padding: 28px 20px 40px; }
+      header { margin-bottom: 28px; }
+      .lookup-controls { flex-direction: column; }
+      button { width: 100%; }
+      .results { margin-top: 24px; padding-top: 24px; }
+      .metrics { grid-template-columns: 1fr; gap: 24px; margin: 24px 0; padding: 24px 0; }
+      .coverage { grid-template-columns: 1fr; gap: 16px; }
+      .coverage > div { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; }
+      .coverage dd { margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="brand">Envira</p>
+      <h1>Rainfall exposure</h1>
+    </header>
+
+    <form id="lookup-form">
+      <label for="asset-id">Asset ID</label>
+      <div class="lookup-controls">
+        <input id="asset-id" name="asset_id" value="A-200975" required autocomplete="off" spellcheck="false" aria-describedby="lookup-status">
+        <button id="lookup-button" type="submit">Check exposure</button>
+      </div>
+      <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" aria-atomic="true"></p>
+    </form>
+
+    <section id="results" class="results" aria-labelledby="asset-heading" hidden>
+      <h2 id="asset-heading"></h2>
+      <p id="analysis-period" class="period"></p>
+      <dl class="station">
+        <div><dt>Nearest station</dt><dd id="station-id"></dd></div>
+        <div><dt>Distance to station</dt><dd id="distance"></dd></div>
+      </dl>
+
+      <dl class="metrics">
+        <div>
+          <dt>Wet days · at least 20 mm</dt>
+          <dd id="wet-days" class="metric-value"></dd>
+          <dd id="wet-note" class="metric-note"></dd>
+        </div>
+        <div>
+          <dt>Highest three-day rainfall</dt>
+          <dd id="three-day" class="metric-value"></dd>
+          <dd id="three-day-note" class="metric-note"></dd>
+        </div>
+      </dl>
+
+      <section aria-labelledby="coverage-heading">
+        <h3 id="coverage-heading">Observation coverage</h3>
+        <dl class="coverage">
+          <div><dt>Complete days</dt><dd id="complete-days"></dd></div>
+          <div><dt>Incomplete days</dt><dd id="incomplete-days"></dd></div>
+          <div><dt>Eligible three-day windows</dt><dd id="eligible-windows"></dd></div>
+        </dl>
+        <p class="limitation">Missing or invalid readings exclude whole days and three-day windows. Counts are not adjusted for incomplete days. These metrics describe observed station rainfall, not flood probability.</p>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+    const form = document.getElementById("lookup-form");
+    const input = document.getElementById("asset-id");
+    const button = document.getElementById("lookup-button");
+    const status = document.getElementById("lookup-status");
+    const results = document.getElementById("results");
+    const number = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
+    const calendarDate = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric", month: "short", year: "numeric", timeZone: "UTC"
+    });
+    const errors = {
+      404: "Asset not found. Check the asset ID and try again.",
+      409: "This asset has conflicting source records. Resolve the duplicate records before checking it again.",
+      422: "This asset has invalid source data. Correct its source record before checking it again.",
+      503: "No eligible station is available for this period. Review the station data before trying again."
+    };
+
+    function setText(id, text) {
+      document.getElementById(id).textContent = text;
+    }
+
+    function setStatus(message, tone = "normal") {
+      status.textContent = message;
+      status.dataset.tone = tone;
+    }
+
+    function renderExposure(data) {
+      setText("asset-heading", `Asset ${data.asset_id}`);
+      const firstDay = calendarDate.format(new Date(`${data.analysis_period.start}T12:00:00Z`));
+      const lastDay = calendarDate.format(new Date(`${data.analysis_period.end}T12:00:00Z`));
+      setText("analysis-period", `${firstDay} – ${lastDay} · ${data.analysis_period.timezone}`);
+      setText("station-id", data.station_id);
+      setText("distance", `${number.format(data.distance_m)} m`);
+
+      const wetAvailable = data.wet_day_count !== null && data.wet_day_status === "available";
+      setText("wet-days", wetAvailable ? number.format(data.wet_day_count) : "Unavailable");
+      document.getElementById("wet-days").classList.toggle("unavailable", !wetAvailable);
+      setText("wet-note", wetAvailable ? "From complete days in this period." : "No complete days are available in this period.");
+
+      const threeAvailable = data.worst_three_day_precip_mm !== null && data.three_day_status === "available";
+      const rain = data.worst_three_day_precip_mm;
+      const rainText = rain > 0 && rain < 0.01 ? "<0.01" : number.format(rain);
+      setText("three-day", threeAvailable ? `${rainText} mm` : "Unavailable");
+      document.getElementById("three-day").classList.toggle("unavailable", !threeAvailable);
+      setText("three-day-note", threeAvailable ? "Across three complete, consecutive calendar days." : "No three consecutive complete days are available.");
+
+      setText("complete-days", number.format(data.coverage.complete_days));
+      setText("incomplete-days", number.format(data.coverage.incomplete_days));
+      setText("eligible-windows", number.format(data.coverage.eligible_three_day_windows));
+      results.hidden = false;
+    }
+
+    input.addEventListener("input", () => {
+      results.hidden = true;
+      input.removeAttribute("aria-invalid");
+      setStatus("");
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (button.disabled) return;
+      const assetId = input.value.trim();
+      results.hidden = true;
+      input.removeAttribute("aria-invalid");
+      if (!assetId) {
+        input.setAttribute("aria-invalid", "true");
+        setStatus("Enter an asset ID to check its exposure.", "error");
+        input.focus();
+        return;
+      }
+      input.value = assetId;
+      input.disabled = true;
+      button.disabled = true;
+      button.textContent = "Checking…";
+      form.setAttribute("aria-busy", "true");
+      setStatus("Loading exposure…");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      let receivedResponse = false;
+      try {
+        const response = await fetch(`/assets/${encodeURIComponent(assetId)}/exposure`, {
+          headers: { Accept: "application/json" }, signal: controller.signal
+        });
+        receivedResponse = true;
+        if (!response.ok) {
+          if (response.status === 404) input.setAttribute("aria-invalid", "true");
+          setStatus(errors[response.status] || `The request failed (HTTP ${response.status}). Try again.`, "error");
+          return;
+        }
+        renderExposure(await response.json());
+        setStatus(`Exposure loaded for ${assetId}.`);
+      } catch (error) {
+        results.hidden = true;
+        const message = error.name === "AbortError"
+          ? "The request timed out. Try again."
+          : receivedResponse
+            ? "The service returned an unexpected response. Try again."
+            : "Could not reach the service. Check that it is running, then try again.";
+        setStatus(message, "error");
+      } finally {
+        clearTimeout(timeout);
+        input.disabled = false;
+        button.disabled = false;
+        button.textContent = "Check exposure";
+        form.removeAttribute("aria-busy");
+      }
+    });
+  </script>
+</body>
+</html>
