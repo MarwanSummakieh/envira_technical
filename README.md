@@ -100,6 +100,13 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
+For a JetBrains Python run configuration, register the existing `.venv\Scripts\python.exe`
+as the project Python SDK, choose module `uvicorn`, and use parameters
+`app.main:create_app --factory --host 127.0.0.1 --port 8000` with the repository root as the
+working directory. The local `Envira` configuration is set up this way. IDE settings are
+machine-local and ignored by Git. After an external SDK-settings repair, restart the IDE
+to load the registration; ensure no other server already occupies port 8000.
+
 Health returns `{"status":"ok"}` after startup loads the three nonempty CSVs and validates required
 columns. It does not yet certify row quality or exposure availability. Missing/empty files or bad
 schemas prevent startup. No file reads occur merely by importing `app.main` or creating the app.

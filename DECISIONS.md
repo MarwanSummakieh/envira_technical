@@ -4,7 +4,7 @@ Stopped: in progress
 ## What I built
 - Stages 1–2: data profile, isolated Python setup, app factory, startup CSV/schema loading and health route.
 - Exercise deadline: 12:22 local; reserve 12:07 onward for final verification. Review pauses count.
-- AI tooling: Codex desktop agent used for inspection, setup, and documentation.
+- AI tooling: Codex desktop agent and a verification subagent used for inspection, setup, checks and documentation.
 - Agent verification: setup/profile, four fixture tests and real-data Uvicorn health smoke passed; no user-confirmed checks.
 - Verified UTC schedule yields four slots on DST dates; rejected coordinate magnitudes as proof of CRS.
 
